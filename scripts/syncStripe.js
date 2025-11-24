@@ -7,15 +7,8 @@ const stripe = new Stripe(process.env.STRIPE_API_KEY);
 const { Client } = pkg;
 
 const db = new Client({
-  host: process.env.PGHOST,
-  port: process.env.PGPORT,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-    ssl: { rejectUnauthorized: false }  // Add this line
+  connectionString: `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}?sslmode=require`
 });
-
-
 
 
 

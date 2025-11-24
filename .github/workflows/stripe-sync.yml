@@ -25,10 +25,20 @@ jobs:
       - name: Run Stripe sync script
         run: node scripts/syncStripe.js
         env:
-          STRIPE_API_KEY: ${{ secrets.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 }}
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           PGHOST: ${{ secrets.ep-sparkling-wind-a6khdegr.us-west-2.retooldb.com }}
           PGPORT: ${{ secrets.5432 }}
           PGUSER: ${{ secrets.retool }}
           PGPASSWORD: ${{ secrets.npg_TxE8j4BOgGnf }}
           PGDATABASE: ${{ secrets.retool }}
 
+
+
+const db = new Client({
+  host: process.env.PGHOST,
+  port: process.env.PGPORT,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE,
+  ssl: { rejectUnauthorized: false }  // Add this line
+});
