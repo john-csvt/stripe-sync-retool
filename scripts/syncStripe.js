@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import pkg from 'pg';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
 const stripe = new Stripe(process.env.STRIPE_API_KEY);
@@ -10,20 +11,23 @@ const db = new Client({
   connectionString: `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}:${process.env.PGPORT}/${process.env.PGDATABASE}?sslmode=require`
 });
 
-
-
 async function syncInvoices() {
   await db.connect();
 
   let hasMore = true;
-  let startingAfter = null;
+  let startingAfter = undefined;
 
   while (hasMore) {
-    const response = await stripe.invoices.list({
+    const params = {
       limit: 100,
       status: 'open',
-      starting_after: startingAfter,
-    });
+    };
+
+    if (startingAfter && typeof startingAfter === 'string' && startingAfter.trim().length > 0) {
+      params.starting_after = startingAfter;
+    }
+
+    const response = await stripe.invoices.list(params);
 
     for (const invoice of response.data) {
       // Pull related charge details
@@ -32,7 +36,7 @@ async function syncInvoices() {
         try {
           charge = await stripe.charges.retrieve(invoice.latest_charge);
         } catch (err) {
-          console.error(`Failed to fetch charge ${invoice.latest_charge}`);
+          console.error(`Failed to fetch charge ${invoice.latest_charge}`, err);
         }
       }
 
@@ -83,17 +87,28 @@ async function syncInvoices() {
     }
 
     hasMore = response.has_more;
-    if (hasMore) {
-      startingAfter = response.data[response.data.length - 1].id;
+
+    if (hasMore && response.data.length > 0) {
+      const lastId = response.data[response.data.length - 1].id;
+      if (lastId && typeof lastId === 'string' && lastId.trim().length > 0) {
+        startingAfter = lastId;
+      } else {
+        console.warn('⚠️ Skipping setting startingAfter — last ID is invalid:', lastId);
+        startingAfter = undefined;
+      }
+    } else {
+      startingAfter = undefined;
     }
   }
 
   await db.end();
 }
 
-syncInvoices().then(() => {
-  console.log("Sync complete ✅");
-}).catch(err => {
-  console.error("Sync failed ❌", err);
-  process.exit(1);
-});
+syncInvoices()
+  .then(() => {
+    console.log("Sync complete ✅");
+  })
+  .catch(err => {
+    console.error("Sync failed ❌", err);
+    process.exit(1);
+  });
