@@ -12,7 +12,12 @@ const db = new Client({
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
+    ssl: { rejectUnauthorized: false }  // Add this line
 });
+
+
+
+
 
 async function syncInvoices() {
   await db.connect();
