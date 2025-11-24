@@ -26,10 +26,10 @@ jobs:
         run: node scripts/syncStripe.js
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
-          PGHOST: ${{ secrets.ep-sparkling-wind-a6khdegr.us-west-2.retooldb.com }}
-          PGPORT: ${{ secrets.5432 }}
-          PGUSER: ${{ secrets.retool }}
-          PGPASSWORD: ${{ secrets.npg_TxE8j4BOgGnf }}
-          PGDATABASE: ${{ secrets.retool }}
+          PGHOST: ${{ secrets.PGHOST }}
+          PGPORT: ${{ secrets.PGPORT }}
+          PGUSER: ${{ secrets.PGUSER }}
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+          PGDATABASE: ${{ secrets.PGDATABASE }}
 
 
