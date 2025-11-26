@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import pkg from 'pg';
 import dotenv from 'dotenv';
+import { getLastSyncTimestamp, updateLastSyncTimestamp } from '../lib/syncState.js';
 
 dotenv.config();
 
@@ -15,21 +16,28 @@ const db = new Client({
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
+
 
 async function syncInvoicesAndCharges() {
   await db.connect();
 
+  // 🔌 Quick connectivity check
   const testInvoice = await stripe.invoices.list({ limit: 1 });
   console.log(`🔌 Stripe connected: Found ${testInvoice.data.length} invoices`);
 
+  // 📅 Get last sync time
+  const lastSync = await getLastSyncTimestamp('invoices');
+  console.log(`📅 Last invoice sync timestamp: ${lastSync}`);
+
+  let newestTimestamp = lastSync;
   let invoiceCount = 0;
   let chargeCount = 0;
 
-  // 🧾 1. Sync Invoices + Linked Charges
+  // ---------------------------------------------------------------
+  // 🧾 1️⃣ Sync NEW or UPDATED invoices + their linked charges
+  // ---------------------------------------------------------------
   let hasMore = true;
   let startingAfter = undefined;
 
@@ -40,9 +48,16 @@ async function syncInvoicesAndCharges() {
     const response = await stripe.invoices.list(params);
 
     for (const invoice of response.data) {
+
+      // ⏩ Skip invoices older than last sync
+      if (invoice.created <= lastSync) continue;
+
       invoiceCount++;
+      newestTimestamp = Math.max(newestTimestamp, invoice.created);
 
       let charge = null;
+
+      // Fetch linked charge if exists
       if (invoice.latest_charge) {
         try {
           console.log(`🔗 Fetching charge for invoice ${invoice.id} → ${invoice.latest_charge}`);
@@ -52,6 +67,7 @@ async function syncInvoicesAndCharges() {
         }
       }
 
+      // Insert / update invoice
       try {
         console.log(`🧾 Inserting invoice ${invoice.id}...`);
 
@@ -90,6 +106,7 @@ async function syncInvoicesAndCharges() {
         console.error(`❌ Failed to insert invoice ${invoice.id}`, err);
       }
 
+      // Insert linked charge
       if (charge) {
         try {
           console.log(`💳 Inserting charge ${charge.id}...`);
@@ -106,8 +123,11 @@ async function syncInvoicesAndCharges() {
     startingAfter = hasMore ? response.data[response.data.length - 1].id : undefined;
   }
 
-  // 💳 2. Sync Orphan (Manual) Charges
+  // ---------------------------------------------------------------
+  // 💳 2️⃣ Sync orphan charges (manual or non-invoice charges)
+  // ---------------------------------------------------------------
   console.log(`🔍 Syncing orphan charges...`);
+
   hasMore = true;
   startingAfter = undefined;
 
@@ -118,8 +138,19 @@ async function syncInvoicesAndCharges() {
     });
 
     for (const charge of chargeResponse.data) {
-      const res = await db.query('SELECT 1 FROM stripe_charges WHERE id = $1', [charge.id]);
-      if (res.rowCount === 0) {
+
+      // Skip old charges (only-new logic)
+      if (charge.created <= lastSync) continue;
+
+      newestTimestamp = Math.max(newestTimestamp, charge.created);
+
+      // Skip if charge already synced
+      const exists = await db.query(
+        'SELECT 1 FROM stripe_charges WHERE id = $1',
+        [charge.id]
+      );
+
+      if (exists.rowCount === 0) {
         try {
           console.log(`💳 Inserting orphan charge ${charge.id}...`);
           await insertCharge(charge);
@@ -132,14 +163,26 @@ async function syncInvoicesAndCharges() {
     }
 
     hasMore = chargeResponse.has_more;
-    startingAfter = hasMore ? chargeResponse.data[chargeResponse.data.length - 1].id : undefined;
+    startingAfter = hasMore
+      ? chargeResponse.data[chargeResponse.data.length - 1].id
+      : undefined;
   }
 
+  // ---------------------------------------------------------------
+  // 📅 Save new last-sync timestamp
+  // ---------------------------------------------------------------
+  await updateLastSyncTimestamp('invoices', newestTimestamp);
+  console.log(`📌 Updated last sync timestamp → ${newestTimestamp}`);
+
   await db.end();
-  console.log(`✅ Sync complete: ${invoiceCount} invoices processed, ${chargeCount} charges inserted.`);
+  console.log(`✅ Sync complete: ${invoiceCount} invoices, ${chargeCount} charges.`);
 }
 
-// 💳 Helper: Insert charge into DB
+
+
+// ----------------------------------------------------------------
+// 💳 reusable charge insert helper
+// ----------------------------------------------------------------
 async function insertCharge(charge) {
   await db.query(`
     INSERT INTO stripe_charges (
@@ -164,6 +207,11 @@ async function insertCharge(charge) {
   ]);
 }
 
+
+
+// ----------------------------------------------------------------
+// 🚀 Run the sync
+// ----------------------------------------------------------------
 syncInvoicesAndCharges()
   .catch(err => {
     console.error("❌ Sync failed", err);
