@@ -1,4 +1,4 @@
-name: Stripe Sync to Retool DB
+name: Stripe Invoices and Charges sync to Retool DB
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
         run: npm install
 
       - name: Run Stripe sync script
-        run: node scripts/syncStripe.js
+        run: node scripts/syncInvoicesCharges.js
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           PGHOST: ${{ secrets.PGHOST }}
