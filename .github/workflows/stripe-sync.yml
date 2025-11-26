@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run Stripe sync script
+      - name: Run Invoice + Charges sync
         run: node scripts/syncInvoicesCharges.js
         env:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
@@ -33,4 +33,12 @@ jobs:
           PGPASSWORD: ${{ secrets.PGPASSWORD }}
           PGDATABASE: ${{ secrets.PGDATABASE }}
 
-
+      - name: Run Customer sync
+        run: node scripts/syncCustomers.js
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          PGHOST: ${{ secrets.PGHOST }}
+          PGPORT: ${{ secrets.PGPORT }}
+          PGUSER: ${{ secrets.PGUSER }}
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+          PGDATABASE: ${{ secrets.PGDATABASE }}
