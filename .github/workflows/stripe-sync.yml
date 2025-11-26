@@ -1,0 +1,44 @@
+name: Stripe Invoices and Charges sync to Retool DB
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # 👈 This enables the manual trigger
+  schedule:
+    - cron: '*/30 * * * *'  # every 30 minutes
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Invoice + Charges sync
+        run: node scripts/syncInvoicesCharges.js
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          PGHOST: ${{ secrets.PGHOST }}
+          PGPORT: ${{ secrets.PGPORT }}
+          PGUSER: ${{ secrets.PGUSER }}
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+          PGDATABASE: ${{ secrets.PGDATABASE }}
+
+      - name: Run Customer sync
+        run: node scripts/syncCustomers.js
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          PGHOST: ${{ secrets.PGHOST }}
+          PGPORT: ${{ secrets.PGPORT }}
+          PGUSER: ${{ secrets.PGUSER }}
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+          PGDATABASE: ${{ secrets.PGDATABASE }}
