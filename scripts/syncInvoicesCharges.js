@@ -9,7 +9,6 @@ console.log("🔍 Loaded PGHOST:", process.env.PGHOST);
 const stripe = new Stripe(process.env.STRIPE_API_KEY);
 const { Client } = pkg;
 
-// ✅ Safe, explicit connection config
 const db = new Client({
   host: process.env.PGHOST,
   port: parseInt(process.env.PGPORT || '5432'),
@@ -24,9 +23,8 @@ const db = new Client({
 async function syncInvoicesAndCharges() {
   await db.connect();
 
-const testInvoice = await stripe.invoices.list({ limit: 1 });
-console.log(`🔌 Stripe connected: Found ${testInvoice.data.length} invoices`);
-  
+  const testInvoice = await stripe.invoices.list({ limit: 1 });
+  console.log(`🔌 Stripe connected: Found ${testInvoice.data.length} invoices`);
 
   let invoiceCount = 0;
   let chargeCount = 0;
@@ -54,40 +52,50 @@ console.log(`🔌 Stripe connected: Found ${testInvoice.data.length} invoices`);
         }
       }
 
-      await db.query(`
-        INSERT INTO stripe_invoices (
-          id, customer_id, customer_email, invoice_number,
-          status, amount_due, amount_paid, amount_remaining, paid,
-          due_date, created, latest_charge_id, payment_intent, subscription
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        ON CONFLICT (id) DO UPDATE SET
-          status = EXCLUDED.status,
-          amount_due = EXCLUDED.amount_due,
-          amount_paid = EXCLUDED.amount_paid,
-          amount_remaining = EXCLUDED.amount_remaining,
-          paid = EXCLUDED.paid,
-          due_date = EXCLUDED.due_date
-      `, [
-        invoice.id,
-        invoice.customer,
-        invoice.customer_email,
-        invoice.number,
-        invoice.status,
-        invoice.amount_due,
-        invoice.amount_paid,
-        invoice.amount_remaining,
-        invoice.paid,
-        invoice.due_date ? new Date(invoice.due_date * 1000) : null,
-        new Date(invoice.created * 1000),
-        invoice.latest_charge || null,
-        invoice.payment_intent || null,
-        invoice.subscription || null
-      ]);
+      try {
+        console.log(`🧾 Inserting invoice ${invoice.id}...`);
+
+        await db.query(`
+          INSERT INTO stripe_invoices (
+            id, customer_id, customer_email, invoice_number,
+            status, amount_due, amount_paid, amount_remaining, paid,
+            due_date, created, latest_charge_id, payment_intent, subscription
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          ON CONFLICT (id) DO UPDATE SET
+            status = EXCLUDED.status,
+            amount_due = EXCLUDED.amount_due,
+            amount_paid = EXCLUDED.amount_paid,
+            amount_remaining = EXCLUDED.amount_remaining,
+            paid = EXCLUDED.paid,
+            due_date = EXCLUDED.due_date
+        `, [
+          invoice.id,
+          invoice.customer,
+          invoice.customer_email,
+          invoice.number,
+          invoice.status,
+          invoice.amount_due,
+          invoice.amount_paid,
+          invoice.amount_remaining,
+          invoice.paid,
+          invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+          new Date(invoice.created * 1000),
+          invoice.latest_charge || null,
+          invoice.payment_intent || null,
+          invoice.subscription || null
+        ]);
+
+        console.log(`✅ Inserted invoice ${invoice.id}`);
+      } catch (err) {
+        console.error(`❌ Failed to insert invoice ${invoice.id}`, err);
+      }
 
       if (charge) {
         try {
+          console.log(`💳 Inserting charge ${charge.id}...`);
           await insertCharge(charge);
           chargeCount++;
+          console.log(`✅ Inserted charge ${charge.id}`);
         } catch (err) {
           console.error(`❌ Failed to insert linked charge ${charge.id}`, err);
         }
@@ -113,8 +121,10 @@ console.log(`🔌 Stripe connected: Found ${testInvoice.data.length} invoices`);
       const res = await db.query('SELECT 1 FROM stripe_charges WHERE id = $1', [charge.id]);
       if (res.rowCount === 0) {
         try {
+          console.log(`💳 Inserting orphan charge ${charge.id}...`);
           await insertCharge(charge);
           chargeCount++;
+          console.log(`✅ Inserted orphan charge ${charge.id}`);
         } catch (err) {
           console.error(`❌ Failed to insert orphan charge ${charge.id}`, err);
         }
