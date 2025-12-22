@@ -1,0 +1,12 @@
+# dependencies
+node_modules/
+
+# environment variables
+.env
+
+# debug / local files
+scripts/debug/
+
+# OS noise
+.DS_Store
+Thumbs.db
